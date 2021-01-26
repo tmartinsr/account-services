@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+    xmlns:cxf="http://camel.apache.org/schema/cxf"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="             http://www.springframework.org/schema/beans             https://www.springframework.org/schema/beans/spring-beans.xsd             http://camel.apache.org/schema/cxf       http://camel.apache.org/schema/cxf/camel-cxf.xsd             http://camel.apache.org/schema/spring             https://camel.apache.org/schema/spring/camel-spring.xsd">
+    <import resource="jetty-engine.xml"/>
+    <bean class="com.fasterxml.jackson.jaxrs.json.JacksonJsonProvider" id="jsonProvider"/>
+    <cxf:rsServer address="http://localhost:8283/account-services"
+        depends-on="kc-cxf-endpoint" id="restAccountsApiServer"
+        loggingFeatureEnabled="true" serviceClass="io.swagger.api.AccountsApi">
+        <cxf:providers>
+            <ref bean="jsonProvider"/>
+        </cxf:providers>
+    </cxf:rsServer>
+    <camelContext id="camel" xmlns="http://camel.apache.org/schema/spring">
+        <route id="_routeRestAccountsApi">
+            <from id="_fromRestAccountsApi" uri="cxfrs:bean:restAccountsApiServer?bindingStyle=SimpleConsumer"/>
+            <log id="_logRestAccountsApi" message="Called method: ${header.operationName}, userId: ${in.header.accountId}"/>
+            <toD id="_toRestAccountsApi" uri="direct:${header.operationName}"/>
+        </route>
+        <route id="_routeRetrieveAccountDetails">
+            <from id="_fromRetrieveAccountDetails" uri="direct:retrieveAccountDetails"/>
+            <log id="_log1RetrieveAccountDetails" message="Called method: ${header.operationName}"/>
+            <setBody id="_setBodyRetrieveAccountDetails">
+                <simple>resource:classpath:data/accounts.json</simple>
+            </setBody>
+            <to id="_toRetrieveAccountDetails" uri="direct:dataSelectionByAccountId"/>
+        </route>
+        <route id="_routeRetrieveAccounts">
+            <from id="_fromRetrieveAccounts" uri="direct:retrieveAccounts"/>
+            <log id="_log1RetrieveAccounts" message="Called method: ${header.operationName}"/>
+            <setBody id="_setBodyRetrieveAccounts">
+                <simple>resource:classpath:data/accounts.json</simple>
+            </setBody>
+            <to id="_toRetrieveAccounts" uri="direct:dataSelectionByUserId"/>
+        </route>
+        <route id="_routeDataSelectionByAccountId">
+            <from id="_fromDataSelectionByAccountId" uri="direct:dataSelectionByAccountId"/>
+            <doTry id="_doTryDataSelectionByAccountId">
+                <transform id="_transform1DataSelectionByAccountId">
+                    <jsonpath>$[?(@.account_id == ${in.header.accountId})]</jsonpath>
+                </transform>
+                <transform id="_transform2DataSelectionByAccountId">
+                    <jsonpath>$[0]</jsonpath>
+                </transform>
+                <doCatch id="_doCatchDataSelectionByAccountId">
+                    <exception>com.jayway.jsonpath.PathNotFoundException</exception>
+                    <setBody id="_setBodyDataSelectionByAccountId">
+                        <constant>{ "code": 400, "message": "Not found" }</constant>
+                    </setBody>
+                </doCatch>
+            </doTry>
+            <log id="_logDataSelectionByAccountId" message=">>> ${body}"/>
+        </route>
+        <route id="_routeDataSelectionByUserId">
+            <from id="_fromDataSelectionByUserId" uri="direct:dataSelectionByUserId"/>
+            <doTry id="_doTryDataSelectionByUserId">
+                <transform id="_transform1DataSelectionByUserId">
+                    <jsonpath>$[?(@.user_id == ${in.header.userId})]</jsonpath>
+                </transform>
+                <doCatch id="_doCatchDataSelectionByUserId">
+                    <exception>com.jayway.jsonpath.PathNotFoundException</exception>
+                    <setBody id="_setBodyDataSelectionByUserId">
+                        <constant>{ "code": 400, "message": "Not found" }</constant>
+                    </setBody>
+                </doCatch>
+            </doTry>
+        </route>
+    </camelContext>
+</beans>
